@@ -111,18 +111,19 @@ namespace VRGadgetController.Services
             }
         }
 
-        private async Task PublishAsync(string topic, string payload)
+        private async Task PublishAsync(string topic, string command)
         {
+            var payloadJson = $"{{ \"data\": \"{command}\" }}";
             var message = new MqttApplicationMessageBuilder()
                 .WithTopic(topic)
-                .WithPayload(payload)
+                .WithPayload(payloadJson)
                 .WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce)
                 .Build();
 
             if (_mqttClient.IsConnected)
             {
                 await _mqttClient.PublishAsync(message);
-                Console.WriteLine($"[Debug] Message published. Topic: {topic}, Payload: {payload}");
+                Console.WriteLine($"[Debug] Message published. Topic: {topic}, Payload: {payloadJson}");
             }
             else
             {
