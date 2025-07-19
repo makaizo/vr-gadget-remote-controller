@@ -1,6 +1,5 @@
-# VR Gadget Controller
-
-A C# application for controlling VR gadgets via MQTT using the Beebotte platform.
+# VR Gadget remote Controller
+An application that sends commands from a VR device to an edge device via MQTT to control hardware.
 
 ## Features
 
