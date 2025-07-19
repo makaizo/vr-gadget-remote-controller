@@ -9,7 +9,7 @@ An application that sends commands from a VR device to an edge device via MQTT t
     - Heating control with a Peltier module (start/finish heating)
     - Cooling control with a Peltier module (start/finish cooling)
     - Splash control with a ultrasonic mist generator module (start/finish splash)
-  - :information-instructions: Usage:
+  - :information-sourceß: Usage:
     - You can combine heating/cooling and splash.  
     e.g. if you call `StartHeatingAsync()` and `StartSplashAsync()`, the gadget will heat and splash at the same time.
     - You cannot use heating and cooling at the same time.  
