@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": ".NET 9 Launch VRGadgetController",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/VRGadgetController/bin/Debug/net9.0/VRGadgetController.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/VRGadgetController",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    }
+  ]
+}
