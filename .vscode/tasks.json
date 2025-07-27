@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/TeslaAPIHandler/TeslaAPIHandler.csproj",
+                "${workspaceFolder}/VRGadgetController/VRGadgetController.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],
