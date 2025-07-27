@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using System.Threading;
 using MQTTnet;
 using MQTTnet.Client;
 
@@ -17,6 +18,9 @@ namespace VRGadgetController.Services
         private readonly string _beebotteToken = "token_eV0DHwv6YCml6X8l";
 
         private readonly string _vrGadgetTopic = "VRGadget/command";
+        private MqttClientOptions? _mqttOptions;
+        private readonly SemaphoreSlim _connectionSemaphore = new SemaphoreSlim(1, 1);
+        private bool _isReconnecting = false;
 
         public VRGadgetController()
         {
@@ -68,28 +72,72 @@ namespace VRGadgetController.Services
         }
         private async Task ConnectAsync(string host, int port, string clientId, string username, string password)
         {
-            var options = new MqttClientOptionsBuilder()
+            _mqttOptions = new MqttClientOptionsBuilder()
                 .WithTcpServer(host, port)
                 .WithClientId(clientId)
                 .WithCredentials(username, password)
+                .WithKeepAlivePeriod(TimeSpan.FromSeconds(30))
                 .Build();
 
-            _mqttClient.DisconnectedAsync += async e =>
-            {
-                Console.WriteLine("[Debug] MQTT Disconnected. Reconnecting...");
-                await Task.Delay(TimeSpan.FromSeconds(5));
-                try
-                {
-                    await _mqttClient.ConnectAsync(options);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[Error] Reconnection failed: {ex.Message}");
-                }
-            };
+            _mqttClient.DisconnectedAsync += OnDisconnectedAsync;
 
-            await _mqttClient.ConnectAsync(options);
+            await _mqttClient.ConnectAsync(_mqttOptions);
             Console.WriteLine("[Debug] Connected to MQTT Broker.");
+        }
+
+        private async Task OnDisconnectedAsync(MqttClientDisconnectedEventArgs e)
+        {
+            if (_isReconnecting)
+                return;
+
+            Console.WriteLine("[Debug] MQTT Disconnected. Reconnecting...");
+            _isReconnecting = true;
+
+            try
+            {
+                await _connectionSemaphore.WaitAsync();
+                
+                // Wait before attempting to reconnect
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                
+                int retryCount = 0;
+                const int maxRetries = 5;
+                
+                while (!_mqttClient.IsConnected && retryCount < maxRetries)
+                {
+                    try
+                    {
+                        Console.WriteLine($"[Debug] Reconnection attempt {retryCount + 1}/{maxRetries}");
+                        await _mqttClient.ConnectAsync(_mqttOptions);
+                        
+                        if (_mqttClient.IsConnected)
+                        {
+                            Console.WriteLine("[Debug] Successfully reconnected to MQTT Broker.");
+                            break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Error] Reconnection attempt {retryCount + 1} failed: {ex.Message}");
+                        retryCount++;
+                        
+                        if (retryCount < maxRetries)
+                        {
+                            await Task.Delay(TimeSpan.FromSeconds(Math.Min(5 * retryCount, 30)));
+                        }
+                    }
+                }
+                
+                if (!_mqttClient.IsConnected)
+                {
+                    Console.WriteLine("[Error] Failed to reconnect after maximum retry attempts.");
+                }
+            }
+            finally
+            {
+                _isReconnecting = false;
+                _connectionSemaphore.Release();
+            }
         }
 
         private async Task SendCommandAsync(string command)
@@ -113,27 +161,44 @@ namespace VRGadgetController.Services
 
         private async Task PublishAsync(string topic, string command)
         {
-            var payloadJson = $"{{ \"data\": \"{command}\" }}";
-            var message = new MqttApplicationMessageBuilder()
-                .WithTopic(topic)
-                .WithPayload(payloadJson)
-                .WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce)
-                .Build();
-
-            if (_mqttClient.IsConnected)
+            await _connectionSemaphore.WaitAsync();
+            try
             {
+                // Wait for reconnection if in progress
+                int waitCount = 0;
+                const int maxWaitTime = 30; // seconds
+                
+                while (_isReconnecting && waitCount < maxWaitTime)
+                {
+                    await Task.Delay(1000);
+                    waitCount++;
+                }
+                
+                if (!_mqttClient.IsConnected)
+                {
+                    Console.WriteLine("[Error] MQTT Client is not connected. Unable to publish.");
+                    throw new InvalidOperationException("[Error] MQTT client is not connected");
+                }
+
+                var payloadJson = $"{{ \"data\": \"{command}\" }}";
+                var message = new MqttApplicationMessageBuilder()
+                    .WithTopic(topic)
+                    .WithPayload(payloadJson)
+                    .WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce)
+                    .Build();
+
                 await _mqttClient.PublishAsync(message);
                 Console.WriteLine($"[Debug] Message published. Topic: {topic}, Payload: {payloadJson}");
             }
-            else
+            finally
             {
-                Console.WriteLine("[Error] MQTT Client is not connected. Unable to publish.");
-                throw new InvalidOperationException("[Error] MQTT client is not connected");
+                _connectionSemaphore.Release();
             }
         }
 
         public void Dispose()
         {
+            _connectionSemaphore?.Dispose();
             _mqttClient?.Dispose();
         }
     }
